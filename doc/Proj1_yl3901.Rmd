@@ -1,0 +1,213 @@
+---
+title: "Project 1 HappyDB"
+author: "Yi Lin yl3901"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+```{r load libraries, warning=FALSE, message=FALSE}
+
+library(tidyverse)
+library(tidytext)
+library(DT)
+library(scales)
+library(wordcloud)
+library(gridExtra)
+library(ngram)
+library(shiny) 
+```
+
+###Preface
+
+Use the dataset 'hm_data' processed by Text_Processing.Rmd and follow the subsetting process in HappyDB_RShiny.Rmd:
+
+```{r, warning=FALSE, message=FALSE}
+hm_data <- read_csv("../output/processed_moments.csv")
+urlfile<-'https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv'
+demo_data <- read_csv(urlfile)
+
+hm_data <- hm_data %>%
+  inner_join(demo_data, by = "wid") %>%
+  select(wid,
+         original_hm,
+         gender, 
+         marital, 
+         parenthood,
+         reflection_period,
+         age, 
+         country, 
+         ground_truth_category, 
+         text) %>%
+  mutate(count = sapply(hm_data$text, wordcount)) %>%
+  filter(gender %in% c("m", "f")) %>%
+  filter(marital %in% c("single", "married")) %>%
+  filter(parenthood %in% c("n", "y")) %>%
+  filter(reflection_period %in% c("24h", "3m")) %>%
+  mutate(reflection_period = fct_recode(reflection_period, 
+                                        months_3 = "3m", hours_24 = "24h"))
+```
+
+###Topic 1: How effective do people express their moments?
+
+There are many ways to explore happy moments. One way is to explore how effective people express their moments. 
+This could be related to the length of sentenses they speak in the survey. But a better angle to look at is the percentage of "effective" wording within the sentenses. For example, some people may use more emotionally related wordings while others may speak plain and lengthy phrases just to describe their emotions. The methodology to apply here is to calculate the percentage of effective words within each sentense and compare across different people groups. Such groups could be defined by different variables, for example, age.
+
+Fist let's explore if groups with different age concentrations will have different sentense length preferences.
+
+Need to prepare the right subset - split the dataset into young group (age under 21), youth group (age between 21 and 28), middle group (age between 28 and 50) and elder group (age above 50).
+```{r, warning=FALSE, message=FALSE}
+#create a new column counting the original sentense word count:
+hm_data <- hm_data %>% mutate(original_count = sapply(hm_data$original_hm,wordcount))
+
+#create another new column calculating the percentage of effective words within each sentense using count variable and original_count variable:
+hm_data <- hm_data %>% mutate(effectiveness = count/original_count)
+
+#clean dm_data by removing NAs in age
+hm_data.clear <- hm_data[is.na(hm_data$age)==FALSE,]
+#check with the following code: table(hm_data.clear$age)
+
+#still have some value saying 'prefer not to say'or '60yrs' which should be removed too
+hm_data.clear <- hm_data.clear[hm_data.clear$age!='prefer not to say'&hm_data.clear$age!='60yrs',]
+#check with the following code: table(hm_data.clear$age)
+#check with the following code to see if there is still NA, which there is not: sum(is.na(hm_data.clear$age))
+
+#now change the age from character to numerical values
+hm_data.clear$age=as.numeric(hm_data.clear$age)
+#check with the following code: table(hm_data.clear$age)
+
+
+#now split the whole hm_data to 3 subsets by age defined above
+young <- hm_data.clear[hm_data.clear$age<=21,]
+youth <- hm_data.clear[hm_data.clear$age>21 & hm_data.clear$age<=28,]
+middle <- hm_data.clear[hm_data.clear$age>28 & hm_data.clear$age<=50,]
+elder <- hm_data.clear[hm_data.clear$age>50,]
+```
+
+Now dive into these three subsets.As the text_process.rmd already processed original sentense to identify effective word that may possibly express happy moments (saved as the text variable), the count variable is the one we look at for effective word count within each sentense.
+```{r, warning=FALSE, message=FALSE}
+#take a look at the length of sentenses of each group
+young$original_count %>% mean
+youth$original_count %>% mean
+middle$original_count %>% mean
+elder$original_count %>% mean
+
+#take a look at the mean of effective word count of each group
+young$count %>% mean
+youth$count %>% mean
+middle$count %>% mean
+elder$count %>% mean
+
+#also take a look at the histogram of word count distribution of each group
+young$count %>% qplot(xlim=c(0,30),main='Effective Word Count of Young Group')
+youth$count %>% qplot(xlim=c(0,30),main='Effective Word Count of Youth Group')
+middle$count %>% qplot(xlim=c(0,30),main='Effective Word Count of Middle Group')
+elder$count %>% qplot(xlim=c(0,30),main='Effective Word Count of Elder Group')
+```
+
+From the average sentense length comparison we can see that the older age the group is, the longer sentense the group speaks. From the average effective word count comparison we can see similar pattern. As for the effective word count distribution, older age groups have distributions concentrated more on the right side compared to younger age groups.
+
+Note that such comparison is from an absolute standpoint. It does not display effectiveness of happy monent expression. We need to look at a comparable metric which is the percentage of effective words in a sentense. 
+
+```{r, warning=FALSE, message=FALSE}
+#calculate the average effectiveness of each group
+young$effectiveness %>% mean
+youth$effectiveness %>% mean
+middle$effectiveness %>% mean
+elder$effectiveness %>% mean
+
+#plot the histogram for distribution of effectiveness of each group
+young$effectiveness %>% qplot(xlim=c(0,1), main='Effectiveness of Young Group')
+youth$effectiveness %>% qplot(xlim=c(0,1), main='Effectiveness of Youth Group')
+middle$effectiveness %>% qplot(xlim=c(0,1), main='Effectiveness of Middle Group')
+elder$effectiveness %>% qplot(xlim=c(0,1), main='Effectiveness of Elder Group')
+```
+
+Now it looks like the trend of effectiveness via age does not follow the trend of effective word count of lentgh of sentense. While middle and elfer groups still keep high effectiveness among all, youth group (people aged from 21 to 28) has the lowest effectiveness. This indicates that youths tend to speak longer sentenses while not as precise or to-the-point to express their happy monents as the people in other age groups.
+
+
+###Topic 2: How do topics vary among different age groups?
+
+Word cloud will be a good way to display topics by descending frequencies for all age groups. WHile there may be common topics across the groups, each group should have some unique topics or topic frequencies may vary.
+
+```{r, warning=FALSE, message=FALSE}
+#write the function to apply wordcloud:
+wordcloud.func <- function(group){
+  word_age_group <- group%>%
+    unnest_tokens(word, text)
+  word_count_age_group  <- word_age_group %>%
+    count(word, sort = T)
+  wordcloud(words = word_count_age_group$word, freq = word_count_age_group$n, 
+            min.freq = 10, max.words=50, random.order=F, rot.per=0.35, colors=
+              brewer.pal(8, "Dark2"))
+}
+
+#apply such function to all groups
+wordcloud.func(young)
+wordcloud.func(youth)
+wordcloud.func(middle)
+wordcloud.func(elder)
+```
+
+While all groups value some common topics such as 'friend', 'family', 'day' (or 'time'), each of them has different emphasis:
+
+Young and youth groups values game, movie, boy/girlfriend in addition to common topics. Besides, 'exam' is one of the word in young group's word cloud, which is a very age-related word and totally makes sense.
+
+Middle and elder groups values more in husband/wife, son/daughter, even dog.
+
+In middle groups, 'money' shows up in as youth and middle-aged people still value money as one of the source that could bring them happiness.
+
+In addition, in elder groups, planted' appears as it may indicate gardening life for elders.
+This is quite reasonable since young people have more individual moments than senior-aged people where the latter enjoy moments more with their significants. 
+
+
+
+###Topic 3: How do emotions vary among different age groups? 
+
+Sentimental analysis is a good analytic method to apply here.
+
+```{r, warning=FALSE, message=FALSE}
+#write the function to apply sentimental analysis:
+sentimental.func <- function(group){
+group%>%
+  unnest_tokens(word, text)%>%
+  select(word)%>%
+  inner_join(get_sentiments("nrc"))%>%
+  count(word,sentiment, sort=T)%>%
+  ungroup()%>%
+  group_by(sentiment)%>%
+  top_n(10)%>%
+  ungroup()%>%
+  mutate(word=reorder(word, n))%>%
+  ggplot(aes(word, n, fill=sentiment))+
+  geom_col(show.legend = F)+
+  facet_wrap(~sentiment,scales = "free_y")+
+  labs(y="conttribution", 
+       x=NULL)+
+  coord_flip()
+}
+
+#apply sentimental analysis function to all groups:
+sentimental.func(young)
+sentimental.func(youth)
+sentimental.func(middle)
+sentimental.func(elder)
+```
+
+Overall summary:
+Since these words are for happy moment survey, they imply more positive attitude across all groups; 'friend' appears to be on the top of several emotions including trust and joy while 'mother' is the top in sadness all the time.
+
+For attitude (positive/negative):
+While analysis across all groups lean greatly towards positive and the most important topic for positiveness is friend, words that contribute to positive are slightly different. For example, 'job' has more importance in young and youth groups than middle and elder groups; 'daughter' shows up in middle and elfer groups in top position.
+'friend' has more weights compared to other factor in young and youth groups and on the contrast, in middle and elder groups each factor share equal weights. On the other hand, for negative it is always 'mother' or 'spent' as the top importance factor.
+
+Highlight for emotions:
+For joy, friend shares less weight in elder group compared to other groups, meaning friend may not bring as much happiness as it could for younger people.
+For anticipation, time becomes more and more weighted as the group age increases.
+
+###Summary
+
+Sentense length increases as age increases;
+For happy moment expression effectiveness, senior people is the most efficient while youth people in their 20's is the least efficient;
+While friend and family are the main topics for all people's happy moments, younger groups focus more on individual life while senior people value more with their significants;
+Sentimental factors are overall similar among all group but some factors have various importance positions among different groups.
