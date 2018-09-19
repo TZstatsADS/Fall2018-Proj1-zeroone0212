@@ -12,7 +12,7 @@ Term: Fall 2018
 + Projec title: How people in different ages express happiness differently?
 + This project is conducted by Yi Lin
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary: The project is to research and analyze how different groups of people in different ages express their happy moments differently. Methods and angles covered in the project includes basic EDA, word cloud as well as sentimental analysis. To summarize the result, all groups have similar top topics to express happy moments while mid level topics have various focus, for example young people emphasize more on individual life and elder people enjoy moments with significants more.
 
 My rmd file and html report are linked as follows:
 + [Proj1_yl3901.Rmd](doc/)
